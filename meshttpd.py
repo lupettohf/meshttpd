@@ -292,7 +292,7 @@ class MeshAPI(object):
             str: The generated internal message ID.
         """
         random_data = str(random.random()).encode()
-        hash_input = random_data + node_id.encode() + message.encode()
+        hash_input = random_data + str(node_id).encode() + message.encode()
         hash_object = hashlib.md5(hash_input)
         return hash_object.hexdigest()[:10]
 
