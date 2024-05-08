@@ -58,6 +58,10 @@ This will start the server locally. To expose it to the internet, it's recommend
 
 - `/api/mesh/get_last_messages`: GET endpoint to retrieve the last cached messages.
 
+- `/api/mesh/delete_message`: POST endpoint to delete a message from the local cache.
+  - Parameters:
+    - `message_id` (str): The messageid to be deleted.
+	
 - `/api/mesh/nodes`: GET endpoint to list all seen nodes.
 
 - `/api/mesh/status`: GET endpoint to check connection status.

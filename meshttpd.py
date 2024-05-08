@@ -6,6 +6,8 @@ import meshtastic
 import meshtastic.tcp_interface
 import json
 import datetime
+import hashlib
+import random
 
 class MeshAPI(object):
     def __init__(self, hostname='meshtastic.local'):
@@ -17,12 +19,12 @@ class MeshAPI(object):
         """
         self.hostname = hostname
         self.iface = None
-        self.device_telemetry_cache = {} 
-        self.environment_telemetry_cache = {} 
-        self.message_cache = [] 
-        self.seen_nodes = {}  
-        self.connection_attempts = 0 
-        self.last_connection_time = None
+        self.device_telemetry_cache = {}  # Cache to store device telemetry data
+        self.environment_telemetry_cache = {}  # Cache to store environment telemetry data
+        self.message_cache = {}  # Cache to store messages
+        self.seen_nodes = {}  # Dictionary to store information about seen nodes
+        self.connection_attempts = 0  # Number of connection attempts made
+        self.last_connection_time = None  # Time of the last successful connection
         self.connection_thread = threading.Thread(target=self.connect_to_mesh, daemon=True)
 
     def on_receive(self, packet, interface):  
@@ -64,7 +66,8 @@ class MeshAPI(object):
         if 'decoded' in packet and 'text' in packet['decoded']:
             node_id = packet['from']
             message_data = packet['decoded']['text']
-            self.message_cache.append({"node_id": node_id, "message": message_data})
+            internal_message_id = self.generate_internal_message_id(node_id, message_data)
+            self.message_cache[internal_message_id] = {"node_id": node_id, "message": message_data}
             if len(self.message_cache) > 100:
                 self.message_cache.pop(0)
                 
@@ -78,7 +81,6 @@ class MeshAPI(object):
     def on_connection(self, interface, topic=pub.AUTO_TOPIC):  
         """
         Callback function called when we (re)connect to the radio.
-        If you have poor wifi coverage like in my case this is essential.
         """
         self.last_connection_time = time.time()
         self.connection_attempts += 1
@@ -87,7 +89,7 @@ class MeshAPI(object):
     @cherrypy.expose
     def index(self):
         """
-        Exposed endpoint for the poors man swagger!
+        Exposed endpoint for the index page.
         """
         html = """
         <html>
@@ -141,13 +143,23 @@ class MeshAPI(object):
                 <a href="/api/mesh/get_last_messages">/api/mesh/get_last_messages</a>: GET endpoint to retrieve the last cached messages
             </li>
             <li>
+                <a href="/api/mesh/delete_message">/api/mesh/delete_message</a>: POST endpoint to delete a message from the cache
+                <ul>
+                    <li>Parameters:
+                        <ul>
+                            <li><b>message_id</b> (str): The ID of the message to be deleted.</li>
+                        </ul>
+                    </li>
+                </ul>
+            </li>
+            <li>
                 <a href="/api/mesh/nodes">/api/mesh/nodes</a>: GET endpoint to list all seen nodes
             </li>
             <li>
                 <a href="/api/mesh/status">/api/mesh/status</a>: GET endpoint to check connection status
             </li>
         </ul>
-        <p>Made by luhf for <a href="https://monocul.us">Monocul.us Mesh</a></p>
+		<p>Made by luhf for <a href="https://monocul.us">Monocul.us Mesh</a></p>
         </body>
         </html>
         """
@@ -214,6 +226,30 @@ class MeshAPI(object):
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
+    def delete_message(self, message_id=None):
+        """
+        Exposed endpoint for deleting a message from the cache.
+
+        Args:
+            message_id (str): The ID of the message to be deleted.
+
+        Returns:
+            dict: A JSON object containing the status of the operation.
+
+        Raises:
+            404 (Missing parameters): If the `message_id` parameter is missing.
+            400 (Invalid message ID): If the specified message ID is invalid.
+        """
+        if message_id is None:
+            cherrypy.response.status = 404
+            return {"error": "Missing parameters: message_id"}
+        if message_id not in self.message_cache:
+            raise cherrypy.HTTPError(400, "Invalid message ID")
+        del self.message_cache[message_id]
+        return {"status": "success", "message": "Message deleted successfully"}
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
     def nodes(self):
         """
         Exposed endpoint for listing all seen nodes.
@@ -243,6 +279,22 @@ class MeshAPI(object):
             except Exception as ex:
                 print(f"Error: Could not connect to {self.hostname} {ex}")
                 time.sleep(1)  # Wait for 1 second before attempting to reconnect
+
+    def generate_internal_message_id(self, node_id, message):
+        """
+        Function to generate an internal message ID using MD5 hashing of random data, node ID, and message.
+
+        Args:
+            node_id (str): The ID of the node.
+            message (str): The message.
+
+        Returns:
+            str: The generated internal message ID.
+        """
+        random_data = str(random.random()).encode()
+        hash_input = random_data + node_id.encode() + message.encode()
+        hash_object = hashlib.md5(hash_input)
+        return hash_object.hexdigest()[:10]
 
     def start(self):
         """
