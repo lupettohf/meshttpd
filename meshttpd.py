@@ -19,6 +19,7 @@ class MeshAPI(object):
         """
         self.hostname = hostname
         self.iface = None
+        self.whoami = None
         self.device_telemetry_cache = {}  # Cache to store device telemetry data
         self.environment_telemetry_cache = {}  # Cache to store environment telemetry data
         self.message_cache = {}  # Cache to store messages
@@ -84,6 +85,7 @@ class MeshAPI(object):
         """
         self.last_connection_time = time.time()
         self.connection_attempts += 1
+        self.whoami = self.iface.myInfo.my_node_num
         print(f"Connected to Meshtastic device at {self.hostname}")
 
     @cherrypy.expose
@@ -264,6 +266,7 @@ class MeshAPI(object):
         """
         return {
             "connected": bool(self.iface),
+            "nodeid": str(self.whoami),
             "last_connection_time": self.last_connection_time,
             "total_connection_attempts": self.connection_attempts
         }
